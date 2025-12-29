@@ -1,0 +1,1 @@
+# Schafkopf AI Package
