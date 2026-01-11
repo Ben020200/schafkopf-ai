@@ -124,11 +124,19 @@ class PPOAgentWrapper:
 
 def load_agents():
     """Load all available agents."""
+    from src.schafkopf_ai.smart_hybrid import SmartHybridAgent
+    
     agents = {
         "Random": RandomAgent(),
         "RuleBased": RuleBasedAgent(),
         "Hybrid": HybridAgent("data/mc_training_data.csv", mistake_threshold=0.05),
     }
+    
+    # Try to load SmartHybrid agent
+    try:
+        agents["SmartHybrid"] = SmartHybridAgent(correction_threshold=0.6)
+    except Exception as e:
+        print(f"Could not load SmartHybrid: {e}")
     
     # Try to load PPO agent
     for checkpoint_name in ["schafkopf_ppo_final.pt", "schafkopf_ppo_vs_rulebased_final.pt", 

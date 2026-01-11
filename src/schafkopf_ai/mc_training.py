@@ -141,15 +141,20 @@ class MCPolicyNetwork(nn.Module):
     def __init__(self, state_size: int = 195, hidden_size: int = 256, dropout: float = 0.2):
         super().__init__()
         
+        # Stronger regularization with BatchNorm and higher dropout
         self.net = nn.Sequential(
             nn.Linear(state_size, hidden_size),
+            nn.BatchNorm1d(hidden_size),
             nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(hidden_size, hidden_size),
+            nn.BatchNorm1d(hidden_size),
             nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(hidden_size, hidden_size // 2),
+            nn.BatchNorm1d(hidden_size // 2),
             nn.ReLU(),
+            nn.Dropout(dropout * 0.5),  # Less dropout at end
             nn.Linear(hidden_size // 2, 32),  # 32 possible cards
         )
     
@@ -176,15 +181,20 @@ class MCValueNetwork(nn.Module):
     def __init__(self, state_size: int = 195, hidden_size: int = 256, dropout: float = 0.2):
         super().__init__()
         
+        # Stronger regularization with BatchNorm
         self.net = nn.Sequential(
             nn.Linear(state_size, hidden_size),
+            nn.BatchNorm1d(hidden_size),
             nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(hidden_size, hidden_size),
+            nn.BatchNorm1d(hidden_size),
             nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(hidden_size, hidden_size // 2),
+            nn.BatchNorm1d(hidden_size // 2),
             nn.ReLU(),
+            nn.Dropout(dropout * 0.5),
             nn.Linear(hidden_size // 2, 32),  # Q-value per card
         )
     
@@ -277,12 +287,14 @@ class MCTrainer:
             self.policy_net.train()
             train_loss = 0.0
             train_correct = 0
+            train_near_correct = 0  # Within 0.05 of best value
             train_total = 0
             
             for batch in train_loader:
                 state = batch['state'].to(self.device)
                 mask = batch['mask'].to(self.device)
                 target = batch['best_action'].to(self.device)
+                values = batch['action_values'].to(self.device)
                 
                 optimizer.zero_grad()
                 log_probs = self.policy_net(state, mask)
@@ -293,13 +305,21 @@ class MCTrainer:
                 train_loss += loss.item()
                 preds = log_probs.argmax(dim=-1)
                 train_correct += (preds == target).sum().item()
+                
+                # Check if prediction is "near optimal" (within 0.05 of best value)
+                pred_values = values.gather(1, preds.unsqueeze(1)).squeeze()
+                best_values = values.gather(1, target.unsqueeze(1)).squeeze()
+                train_near_correct += ((best_values - pred_values) < 0.05).sum().item()
+                
                 train_total += len(target)
             
             train_acc = train_correct / train_total
+            train_near_acc = train_near_correct / train_total
             
             # Validation
             self.policy_net.eval()
             val_correct = 0
+            val_near_correct = 0
             val_total = 0
             
             with torch.no_grad():
@@ -307,13 +327,21 @@ class MCTrainer:
                     state = batch['state'].to(self.device)
                     mask = batch['mask'].to(self.device)
                     target = batch['best_action'].to(self.device)
+                    values = batch['action_values'].to(self.device)
                     
                     log_probs = self.policy_net(state, mask)
                     preds = log_probs.argmax(dim=-1)
                     val_correct += (preds == target).sum().item()
+                    
+                    # Near optimal
+                    pred_values = values.gather(1, preds.unsqueeze(1)).squeeze()
+                    best_values = values.gather(1, target.unsqueeze(1)).squeeze()
+                    val_near_correct += ((best_values - pred_values) < 0.05).sum().item()
+                    
                     val_total += len(target)
             
             val_acc = val_correct / val_total
+            val_near_acc = val_near_correct / val_total
             scheduler.step(val_acc)
             
             if val_acc > best_val_acc:
@@ -322,7 +350,8 @@ class MCTrainer:
             
             if (epoch + 1) % 5 == 0 or epoch == 0:
                 print(f"  Epoch {epoch+1}/{self.config.epochs}: "
-                      f"Train Acc={train_acc*100:.1f}%, Val Acc={val_acc*100:.1f}%")
+                      f"Train Acc={train_acc*100:.1f}% (near={train_near_acc*100:.1f}%), "
+                      f"Val Acc={val_acc*100:.1f}% (near={val_near_acc*100:.1f}%)")
         
         # Load best model
         self.policy_net.load_state_dict(best_state)
