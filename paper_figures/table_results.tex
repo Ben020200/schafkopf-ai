@@ -1,0 +1,19 @@
+
+\begin{table}[h]
+\centering
+\caption{Win Rates Against RuleBased Agent (1000 Games)}
+\label{tab:results}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Agent} & \textbf{Method} & \textbf{Win Rate} & \textbf{Δ vs RB} \\
+\midrule
+RuleBased & Handcrafted heuristics & 48.7% & — \\
+PPO (self-play) & RL, 2M timesteps & 42.3% & -6.4% \\
+Imitation Learning & Supervised on RuleBased & 44.5% & -4.2% \\
+Simple Hybrid & Exact MC lookup & 46.5% & -2.2% \\
+Q-Value Predictor & MSE loss on Q-values & 49.7% & +1.0% \\
+Blend Hybrid & α-weighted blend & 49.7% & +1.0% \\
+\textbf{Ranking Hybrid} & Pairwise ranking loss & \textbf{57.7%} & \textbf{+9.0%} \\
+\bottomrule
+\end{tabular}
+\end{table}
